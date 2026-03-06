@@ -1,0 +1,31 @@
+{
+    "name": "ithilbert/sitemap",
+    "type": "library",
+    "license": "MIT",
+    "description": "Sitemap-Generator für Laravel – Routen werden direkt als Sitemap-Einträge deklariert.",
+    "keywords": [
+        "it-hilbert",
+        "laravel",
+        "sitemap"
+    ],
+    "authors": [{
+        "name": "Jörg Hilbert",
+        "homepage": "https://www.it-hilbert.com",
+        "role": "Developer"
+    }],
+    "homepage": "https://www.it-hilbert.com",
+    "minimum-stability": "dev",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "ITHilbert\\Sitemap\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "ITHilbert\\Sitemap\\SitemapServiceProvider"
+            ]
+        }
+    }
+}
