@@ -36,6 +36,11 @@ class SitemapServiceProvider extends ServiceProvider
 
         // Service als Singleton binden
         $this->app->singleton(SitemapService::class);
+
+        // Facade Alias registrieren
+        $this->app->alias(SitemapService::class, 'Sitemap');
+        
+        // Autoloader für Facade beibringen (falls gewünscht, hier reicht das Alias)
     }
 
     /**

@@ -103,6 +103,43 @@ Die Dateien werden unter `public/` abgelegt.
 
 ---
 
+## Dynamische Einträge (z. B. aus einer Datenbank)
+
+Wenn du zehntausende von Einträgen (wie Landingpages oder Produkte) hast, solltest du diese nicht in der `web.php` registrieren, sondern speicherschonend erst dann aus der Datenbank laden, wenn der `sitemap:generate`-Befehl ausgeführt wird.
+
+Dazu stellt das Paket einen **Generator-Callback** bereit. Du kannst Generatoren z.B. in der `boot()`-Methode des `AppServiceProvider` registrieren:
+
+```php
+use ITHilbert\Sitemap\Facades\Sitemap;
+use App\Models\Landingpage;
+
+public function boot()
+{
+    Sitemap::addGenerator(function () {
+        $entries = [];
+
+        // Chunking verwenden, um Speicher bei großen DB-Tabellen zu sparen!
+        Landingpage::chunk(1000, function($pages) use (&$entries) {
+            foreach($pages as $page) {
+                $entries[] = [
+                    'url'        => url('/berater/' . $page->slug), // Kompletter URL-String notwendig
+                    'lastmod'    => $page->updated_at,              // Kann Carbon, String oder null sein
+                    'priority'   => '0.8',
+                    'changefreq' => 'weekly',
+                    // 'file'    => 'landingpages.xml'              // (Optional) Eigene XML-Datei
+                ];
+            }
+        });
+
+        return $entries;
+    });
+}
+```
+
+Die Closure wird **nur beim Aufruf des Artisan-Befehls** abgearbeitet. Das normale Frontend bleibt rasant schnell, selbst bei 100.000 generierten Links.
+
+---
+
 ## Konfiguration
 
 Nach dem Publizieren kann `config/sitemap.php` angepasst werden:

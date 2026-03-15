@@ -7,6 +7,24 @@ use Illuminate\Support\Facades\Route;
 class SitemapService
 {
     /**
+     * Liste aller registrierten Generatoren-Callbacks.
+     * @var array<callable>
+     */
+    protected array $generators = [];
+
+    /**
+     * Fügt einen neuen Generator (Closure/Callback) hinzu,
+     * der zur Laufzeit von `sitemap:generate` ausgeführt wird,
+     * um Datenbank-Einträge hinzuzufügen.
+     *
+     * @param callable $generator
+     */
+    public function addGenerator(callable $generator): void
+    {
+        $this->generators[] = $generator;
+    }
+
+    /**
      * Liefert alle Sitemap-fähigen Routen, gruppiert nach Ziel-Dateiname.
      *
      * @return array<string, array<array{url: string, priority: string, changefreq: string, lastmod: string|null}>>
@@ -21,6 +39,7 @@ class SitemapService
 
         $groups = [];
 
+        // 1. Statische Laravel-Routen verarbeiten
         foreach (Route::getRoutes() as $route) {
             $action = $route->getAction();
 
@@ -28,7 +47,6 @@ class SitemapService
                 continue;
             }
 
-            // Nur GET-Routen
             if (!in_array('GET', $route->methods())) {
                 continue;
             }
@@ -42,6 +60,30 @@ class SitemapService
                 'changefreq' => $meta['changefreq'] ?? $defaultChangefreq,
                 'lastmod'    => $this->resolveLastmod($meta['lastmod'] ?? $defaultLastmod),
             ];
+        }
+
+        // 2. Dynamische Generatoren verarbeiten (DB Einträge)
+        foreach ($this->generators as $generator) {
+            $entries = call_user_func($generator);
+            if (!is_array($entries)) {
+                continue;
+            }
+
+            foreach ($entries as $entry) {
+                // Notwendige Felder absichern
+                if (!isset($entry['url'])) {
+                    continue;
+                }
+
+                $filename = $entry['file'] ?? $defaultFilename;
+
+                $groups[$filename][] = [
+                    'url'        => $entry['url'], // Url wird vom Generator fertig (!) geliefert (inkl. https://)
+                    'priority'   => $entry['priority']   ?? $defaultPriority,
+                    'changefreq' => $entry['changefreq'] ?? $defaultChangefreq,
+                    'lastmod'    => $this->resolveLastmod($entry['lastmod'] ?? $defaultLastmod),
+                ];
+            }
         }
 
         return $groups;
