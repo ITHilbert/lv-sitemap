@@ -43,6 +43,6 @@ return [
     |--------------------------------------------------------------------------
     | Wird aus der APP_URL-Umgebungsvariable gelesen.
     */
-    'url_base' => env('APP_URL', 'http://localhost'),
+    'url_base' => env('SITEMAP_URL', env('APP_URL', 'http://localhost')),
 
 ];

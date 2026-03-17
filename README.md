@@ -150,9 +150,21 @@ return [
     'default_priority'  => '0.5',             // 0.0 – 1.0
     'default_changefreq'=> 'monthly',         // always|hourly|daily|weekly|monthly|yearly|never
     'default_lastmod'   => true,              // true = heutiges Datum, false = keins, string = fixes Datum
-    'url_base'          => env('APP_URL'),     // Basis-URL der generierten URLs
+    'url_base'          => env('SITEMAP_URL', env('APP_URL', 'http://localhost')), // Basis-URL der generierten URLs
 ];
 ```
+
+### Basis-URL konfigurieren (`.env`)
+
+Standardmäßig nutzt das Package die `APP_URL` aus deiner `.env`-Datei. 
+
+Wenn du lokal (Dev-Umgebung) Sitemaps für die Live-Domain generieren möchtest (z.B. damit dort `https://live-domain.de` anstatt `http://localhost` steht), kannst du optional die explizite Variable `SITEMAP_URL` in deiner `.env` setzen:
+
+```env
+SITEMAP_URL=https://deine-live-domain.de
+```
+
+Auf dem Live-Server brauchst du diesen Eintrag nicht, da dort die `APP_URL` bereits korrekt ist.
 
 ### changefreq-Werte
 
