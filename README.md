@@ -1,132 +1,91 @@
 # ITHilbert Sitemap
 
-Ein Laravel-Package zur einfachen Verwaltung und Generierung von XML-Sitemaps direkt über die Route-Definition.
-
----
+Laravel-Package zur einfachen Verwaltung und Generierung von XML-Sitemaps direkt aus der Route-Definition.
 
 ## Features
 
-- Routen direkt als Sitemap-Einträge deklarieren
-- Fluente API für Priorität, Changefreq, Lastmod und Zieldatei
-- Mehrere Sitemap-Dateien gleichzeitig unterstützen
-- Standardwerte über `config/sitemap.php` konfigurierbar
-- Artisan-Command `sitemap:generate` erzeugt valides XML (sitemaps.org Standard)
-
----
+- Routen direkt als Sitemap-Einträge deklarieren (Macro `->sitemap()`)
+- Fluente API: `priority()`, `changefreq()`, `lastmod()`, `file()`
+- Mehrere Sitemap-Dateien parallel generieren
+- Dynamische Einträge via Generator-Callback (DB-Chunking-tauglich)
+- Konfigurierbare Standardwerte (Priority, Changefreq, Lastmod, Url-Base)
+- Saubere XML-Erzeugung via `XMLWriter` (korrektes Escaping)
+- Validation: `priority` zwingend 0.0–1.0, `changefreq` als Enum
+- Parameter-Routen (`/blog/{slug}`) werden automatisch übersprungen
+- Artisan-Command `sitemap:generate` (optional mit `--path=`)
 
 ## Installation
 
-1. Autoload-Eintrag in der Root-`composer.json` ergänzen:
-
-```json
-"autoload": {
-    "psr-4": {
-        "ITHilbert\\Sitemap\\": "packages/sitemap/src"
-    }
-}
-```
-
-2. Autoloader neu generieren:
-
 ```bash
-composer dump-autoload
+composer require ithilbert/sitemap
+php artisan vendor:publish --tag=sitemap-config   # optional
 ```
 
-3. ServiceProvider in `config/app.php` eintragen (alphabetisch sortiert):
-
-```php
-ITHilbert\Sitemap\SitemapServiceProvider::class,
-```
-
-4. Config publizieren (optional):
-
-```bash
-php artisan vendor:publish --provider="ITHilbert\Sitemap\SitemapServiceProvider"
-```
-
----
+Service Provider und Facade werden automatisch über Laravel Package-Discovery registriert.
 
 ## Verwendung
 
-### Route deklarieren
+### Routen deklarieren
 
 ```php
-// 1. Mit Config-Standardwerten
+use ITHilbert\Sitemap\Enums\Changefreq;
+
+// 1. Standardwerte aus Config
 Route::get('/blog', [BlogController::class, 'index'])
     ->name('blog')
     ->sitemap();
 
-// 2. Mit eigenen Werten (Array-Syntax)
+// 2. Array-Syntax
 Route::get('/impressum', [PageController::class, 'impressum'])
-    ->name('impressum')
     ->sitemap(['priority' => '0.3', 'changefreq' => 'yearly']);
 
-// 3. Fluente Syntax
+// 3. Fluente Syntax (mit Validation)
 Route::get('/kontakt', [PageController::class, 'kontakt'])
-    ->name('kontakt')
     ->sitemap()
     ->priority('0.5')
-    ->changefreq('monthly');
+    ->changefreq(Changefreq::Monthly);
 
-// 4. Andere Sitemap-Datei (String-Syntax)
+// 4. Andere Ziel-Datei (String-Syntax)
 Route::get('/laravel-guide', [PageController::class, 'laravel'])
-    ->name('laravel-guide')
     ->sitemap('laravel-sitemap.xml');
 
-// 5. Fluente Syntax mit anderer Zieldatei
+// 5. Fluente Syntax mit Datei
 Route::get('/laravel-advanced', [PageController::class, 'advanced'])
-    ->name('laravel-advanced')
     ->sitemap()
     ->file('laravel-sitemap.xml')
     ->priority('0.8');
-
-// 6. Nicht in der Sitemap erscheinen
-Route::get('/intern', [InternController::class, 'index'])
-    ->name('intern');
 ```
+
+Routen mit URL-Parametern (`/blog/{slug}`) erscheinen **nicht** in der statischen Sitemap — dynamische URLs gehören in einen Generator (siehe unten).
 
 ### Sitemap generieren
 
 ```bash
 php artisan sitemap:generate
+php artisan sitemap:generate --path=/custom/path
 ```
 
-Ausgabe:
-```
-Generiere Sitemap...
-  ✓ sitemap.xml         → 4 Einträge
-  ✓ laravel-sitemap.xml → 1 Eintrag
-Fertig! 2 Datei(en) mit insgesamt 5 Einträgen generiert.
-```
+## Dynamische Einträge (z. B. aus der Datenbank)
 
-Die Dateien werden unter `public/` abgelegt.
-
----
-
-## Dynamische Einträge (z. B. aus einer Datenbank)
-
-Wenn du zehntausende von Einträgen (wie Landingpages oder Produkte) hast, solltest du diese nicht in der `web.php` registrieren, sondern speicherschonend erst dann aus der Datenbank laden, wenn der `sitemap:generate`-Befehl ausgeführt wird.
-
-Dazu stellt das Paket einen **Generator-Callback** bereit. Du kannst Generatoren z.B. in der `boot()`-Methode des `AppServiceProvider` registrieren:
+Für zehntausende Einträge nicht in `web.php` registrieren, sondern erst beim `sitemap:generate`-Aufruf aus der DB laden:
 
 ```php
 use ITHilbert\Sitemap\Facades\Sitemap;
 use App\Models\Landingpage;
 
-public function boot()
+public function boot(): void
 {
     Sitemap::addGenerator(function () {
         $entries = [];
 
-        // Chunking verwenden, um Speicher bei großen DB-Tabellen zu sparen!
-        Landingpage::chunk(1000, function($pages) use (&$entries) {
-            foreach($pages as $page) {
+        Landingpage::chunk(1000, function ($pages) use (&$entries) {
+            foreach ($pages as $page) {
                 $entries[] = [
-                    'url'        => url('/berater/' . $page->slug), // Kompletter URL-String notwendig
-                    'lastmod'    => $page->updated_at,              // Kann Carbon, String oder null sein
+                    'url'        => url('/berater/' . $page->slug),
+                    'lastmod'    => $page->updated_at,    // Carbon, DateTime, string oder null
                     'priority'   => '0.8',
                     'changefreq' => 'weekly',
-                    // 'file'    => 'landingpages.xml'              // (Optional) Eigene XML-Datei
+                    // 'file'    => 'landingpages.xml',   // optional
                 ];
             }
         });
@@ -136,60 +95,41 @@ public function boot()
 }
 ```
 
-Die Closure wird **nur beim Aufruf des Artisan-Befehls** abgearbeitet. Das normale Frontend bleibt rasant schnell, selbst bei 100.000 generierten Links.
+Akzeptierte `lastmod`-Typen: `string` (ISO 8601), `bool` (true=heute), `Carbon\CarbonInterface`, `DateTimeInterface`, `null`.
 
----
-
-## Konfiguration
-
-Nach dem Publizieren kann `config/sitemap.php` angepasst werden:
+## Konfiguration (`config/sitemap.php`)
 
 ```php
 return [
-    'default_filename'  => 'sitemap.xml',     // Dateiname wenn kein ->sitemap('...')  angegeben
-    'default_priority'  => '0.5',             // 0.0 – 1.0
-    'default_changefreq'=> 'monthly',         // always|hourly|daily|weekly|monthly|yearly|never
-    'default_lastmod'   => true,              // true = heutiges Datum, false = keins, string = fixes Datum
-    'url_base'          => env('APP_URL'),     // Basis-URL der generierten URLs
+    'default_filename'   => 'sitemap.xml',
+    'default_priority'   => '0.5',         // 0.0 – 1.0
+    'default_changefreq' => 'monthly',     // always|hourly|daily|weekly|monthly|yearly|never
+    'default_lastmod'    => true,          // true=heute, false=keins, string=fix
+    'url_base'           => env('APP_URL'),
 ];
 ```
-
-### changefreq-Werte
-
-| Wert | Bedeutung |
-|---|---|
-| `always` | Jede Abfrage |
-| `hourly` | Stündlich |
-| `daily` | Täglich |
-| `weekly` | Wöchentlich |
-| `monthly` | Monatlich |
-| `yearly` | Jährlich |
-| `never` | Unveränderlich |
-
----
 
 ## Struktur
 
 ```
-packages/sitemap/
+packages/lv-sitemap/
 ├── composer.json
 ├── README.md
 ├── LICENSE
-└── src/
-    ├── SitemapServiceProvider.php
-    ├── Builders/
-    │   └── SitemapRouteBuilder.php   # Fluente API
-    ├── Commands/
-    │   └── SitemapGenerateCommand.php # php artisan sitemap:generate
-    ├── Config/
-    │   └── sitemap.php               # Standardwerte
-    ├── Macros/
-    │   └── RouteSitemapMacro.php     # Route->sitemap() Macro
-    └── Services/
-        └── SitemapService.php        # Kern-Logik
+├── src/
+│   ├── SitemapServiceProvider.php
+│   ├── Builders/SitemapRouteBuilder.php   # Fluente API + Validation
+│   ├── Commands/SitemapGenerateCommand.php
+│   ├── Config/sitemap.php
+│   ├── Data/SitemapEntry.php              # Readonly DTO
+│   ├── Enums/Changefreq.php
+│   ├── Facades/Sitemap.php
+│   ├── Macros/RouteSitemapMacro.php
+│   └── Services/SitemapService.php        # Kern-Logik + XMLWriter
+└── tests/
+    ├── Unit/                              # Enum, DTO
+    └── Feature/                           # Service, Builder, Command
 ```
-
----
 
 ## Lizenz
 

@@ -1,13 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 return [
 
     /*
     |--------------------------------------------------------------------------
     | Standard-Dateiname
     |--------------------------------------------------------------------------
-    | Name der Sitemap-Datei, die standardmäßig unter public/ generiert wird.
-    | Routen ohne expliziten Dateinamen landen in dieser Datei.
+    | Routen ohne expliziten Dateinamen landen in dieser Datei (unter public/).
     */
     'default_filename' => 'sitemap.xml',
 
@@ -15,8 +16,7 @@ return [
     |--------------------------------------------------------------------------
     | Standard-Priorität
     |--------------------------------------------------------------------------
-    | Wert zwischen 0.0 und 1.0. Wird verwendet, wenn eine Route mit
-    | ->sitemap() ohne explizite Priorität deklariert wird.
+    | Wert zwischen 0.0 und 1.0.
     */
     'default_priority' => '0.5',
 
@@ -24,7 +24,7 @@ return [
     |--------------------------------------------------------------------------
     | Standard-Änderungsfrequenz
     |--------------------------------------------------------------------------
-    | Erlaubte Werte: always, hourly, daily, weekly, monthly, yearly, never
+    | Erlaubt: always, hourly, daily, weekly, monthly, yearly, never
     */
     'default_changefreq' => 'monthly',
 
@@ -32,8 +32,9 @@ return [
     |--------------------------------------------------------------------------
     | Standard-Lastmod
     |--------------------------------------------------------------------------
-    | Wenn true, wird das aktuelle Datum als lastmod-Datum in die Sitemap
-    | geschrieben. Kann auch ein festes Datum (string) gesetzt werden.
+    | true       = aktuelles Datum als ATOM-String
+    | false/null = kein lastmod-Tag in der Sitemap
+    | string     = fixer ISO-8601-String
     */
     'default_lastmod' => true,
 
@@ -41,7 +42,6 @@ return [
     |--------------------------------------------------------------------------
     | Basis-URL
     |--------------------------------------------------------------------------
-    | Wird aus der APP_URL-Umgebungsvariable gelesen.
     */
     'url_base' => env('APP_URL', 'http://localhost'),
 

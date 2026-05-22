@@ -1,136 +1,181 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ITHilbert\Sitemap\Services;
 
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Route;
+use ITHilbert\Sitemap\Data\SitemapEntry;
+use ITHilbert\Sitemap\Enums\Changefreq;
+use XMLWriter;
 
-class SitemapService
+final class SitemapService
 {
     /**
-     * Liste aller registrierten Generatoren-Callbacks.
      * @var array<callable>
      */
-    protected array $generators = [];
+    private array $generators = [];
 
-    /**
-     * Fügt einen neuen Generator (Closure/Callback) hinzu,
-     * der zur Laufzeit von `sitemap:generate` ausgeführt wird,
-     * um Datenbank-Einträge hinzuzufügen.
-     *
-     * @param callable $generator
-     */
     public function addGenerator(callable $generator): void
     {
         $this->generators[] = $generator;
     }
 
+    public function clearGenerators(): void
+    {
+        $this->generators = [];
+    }
+
     /**
-     * Liefert alle Sitemap-fähigen Routen, gruppiert nach Ziel-Dateiname.
+     * Liefert alle Sitemap-Einträge gruppiert nach Ziel-Datei.
      *
-     * @return array<string, array<array{url: string, priority: string, changefreq: string, lastmod: string|null}>>
+     * @return array<string, list<SitemapEntry>>
      */
     public function getEntriesGroupedByFile(): array
     {
-        $defaultFilename   = config('sitemap.default_filename', 'sitemap.xml');
-        $defaultPriority   = config('sitemap.default_priority', '0.5');
-        $defaultChangefreq = config('sitemap.default_changefreq', 'monthly');
-        $defaultLastmod    = config('sitemap.default_lastmod', true);
-        $urlBase           = rtrim(config('sitemap.url_base', config('app.url')), '/');
+        $defaults = $this->loadDefaults();
 
         $groups = [];
-
-        // 1. Statische Laravel-Routen verarbeiten
-        foreach (Route::getRoutes() as $route) {
-            $action = $route->getAction();
-
-            if (!isset($action['sitemap_meta'])) {
-                continue;
-            }
-
-            if (!in_array('GET', $route->methods())) {
-                continue;
-            }
-
-            $meta     = $action['sitemap_meta'];
-            $filename = $meta['file'] ?? $defaultFilename;
-
-            $groups[$filename][] = [
-                'url'        => $urlBase . '/' . ltrim($route->uri(), '/'),
-                'priority'   => $meta['priority']   ?? $defaultPriority,
-                'changefreq' => $meta['changefreq'] ?? $defaultChangefreq,
-                'lastmod'    => $this->resolveLastmod($meta['lastmod'] ?? $defaultLastmod),
-            ];
-        }
-
-        // 2. Dynamische Generatoren verarbeiten (DB Einträge)
-        foreach ($this->generators as $generator) {
-            $entries = call_user_func($generator);
-            if (!is_array($entries)) {
-                continue;
-            }
-
-            foreach ($entries as $entry) {
-                // Notwendige Felder absichern
-                if (!isset($entry['url'])) {
-                    continue;
-                }
-
-                $filename = $entry['file'] ?? $defaultFilename;
-
-                $groups[$filename][] = [
-                    'url'        => $entry['url'], // Url wird vom Generator fertig (!) geliefert (inkl. https://)
-                    'priority'   => $entry['priority']   ?? $defaultPriority,
-                    'changefreq' => $entry['changefreq'] ?? $defaultChangefreq,
-                    'lastmod'    => $this->resolveLastmod($entry['lastmod'] ?? $defaultLastmod),
-                ];
-            }
-        }
+        $this->collectRouteEntries($groups, $defaults);
+        $this->collectGeneratorEntries($groups, $defaults);
 
         return $groups;
     }
 
     /**
-     * Generiert das XML für eine Liste von Einträgen.
-     *
-     * @param array<array{url: string, priority: string, changefreq: string, lastmod: string|null}> $entries
+     * @param list<SitemapEntry> $entries
      */
     public function generateXml(array $entries): string
     {
-        $xml  = '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL;
-        $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . PHP_EOL;
+        $writer = new XMLWriter();
+        $writer->openMemory();
+        $writer->setIndent(true);
+        $writer->setIndentString('    ');
+        $writer->startDocument('1.0', 'UTF-8');
+        $writer->startElement('urlset');
+        $writer->writeAttribute('xmlns', 'http://www.sitemaps.org/schemas/sitemap/0.9');
 
         foreach ($entries as $entry) {
-            $xml .= '    <url>' . PHP_EOL;
-            $xml .= '        <loc>' . htmlspecialchars($entry['url'], ENT_XML1, 'UTF-8') . '</loc>' . PHP_EOL;
+            $writer->startElement('url');
+            $writer->writeElement('loc', $entry->url);
 
-            if ($entry['lastmod']) {
-                $xml .= '        <lastmod>' . $entry['lastmod'] . '</lastmod>' . PHP_EOL;
+            if ($entry->lastmod !== null) {
+                $writer->writeElement('lastmod', $entry->lastmod);
             }
 
-            $xml .= '        <changefreq>' . $entry['changefreq'] . '</changefreq>' . PHP_EOL;
-            $xml .= '        <priority>' . $entry['priority'] . '</priority>' . PHP_EOL;
-            $xml .= '    </url>' . PHP_EOL;
+            $writer->writeElement('changefreq', $entry->changefreq->value);
+            $writer->writeElement('priority', $entry->priority);
+            $writer->endElement();
         }
 
-        $xml .= '</urlset>' . PHP_EOL;
+        $writer->endElement();
+        $writer->endDocument();
 
-        return $xml;
+        return $writer->outputMemory();
     }
 
     /**
-     * Erstellt den Lastmod-String.
+     * @return array{filename: string, priority: string, changefreq: Changefreq, lastmod: bool|string, url_base: string}
      */
+    private function loadDefaults(): array
+    {
+        return [
+            'filename'   => (string) config('sitemap.default_filename', 'sitemap.xml'),
+            'priority'   => (string) config('sitemap.default_priority', '0.5'),
+            'changefreq' => Changefreq::fromInput((string) config('sitemap.default_changefreq', 'monthly')),
+            'lastmod'    => config('sitemap.default_lastmod', true),
+            'url_base'   => rtrim((string) config('sitemap.url_base', (string) config('app.url')), '/'),
+        ];
+    }
+
+    /**
+     * @param array<string, list<SitemapEntry>> $groups
+     * @param array{filename: string, priority: string, changefreq: Changefreq, lastmod: bool|string, url_base: string} $defaults
+     */
+    private function collectRouteEntries(array &$groups, array $defaults): void
+    {
+        foreach (Route::getRoutes() as $route) {
+            $action = $route->getAction();
+
+            if (! isset($action['sitemap_meta'])) {
+                continue;
+            }
+            if (! in_array('GET', $route->methods(), true)) {
+                continue;
+            }
+            if ($this->hasUriParameters($route->uri())) {
+                continue;
+            }
+
+            $meta     = $action['sitemap_meta'];
+            $filename = $meta['file'] ?? $defaults['filename'];
+
+            $groups[$filename][] = new SitemapEntry(
+                url: $defaults['url_base'] . '/' . ltrim($route->uri(), '/'),
+                priority: $meta['priority'] ?? $defaults['priority'],
+                changefreq: isset($meta['changefreq'])
+                    ? Changefreq::fromInput($meta['changefreq'])
+                    : $defaults['changefreq'],
+                lastmod: $this->resolveLastmod($meta['lastmod'] ?? $defaults['lastmod']),
+            );
+        }
+    }
+
+    /**
+     * @param array<string, list<SitemapEntry>> $groups
+     * @param array{filename: string, priority: string, changefreq: Changefreq, lastmod: bool|string, url_base: string} $defaults
+     */
+    private function collectGeneratorEntries(array &$groups, array $defaults): void
+    {
+        foreach ($this->generators as $generator) {
+            $entries = $generator();
+            if (! is_iterable($entries)) {
+                continue;
+            }
+
+            foreach ($entries as $entry) {
+                if (! is_array($entry) || ! isset($entry['url'])) {
+                    continue;
+                }
+
+                $filename = $entry['file'] ?? $defaults['filename'];
+
+                $groups[$filename][] = new SitemapEntry(
+                    url: (string) $entry['url'],
+                    priority: (string) ($entry['priority'] ?? $defaults['priority']),
+                    changefreq: isset($entry['changefreq'])
+                        ? Changefreq::fromInput((string) $entry['changefreq'])
+                        : $defaults['changefreq'],
+                    lastmod: $this->resolveLastmod($entry['lastmod'] ?? $defaults['lastmod']),
+                );
+            }
+        }
+    }
+
+    private function hasUriParameters(string $uri): bool
+    {
+        return str_contains($uri, '{');
+    }
+
     private function resolveLastmod(mixed $lastmod): ?string
     {
         if ($lastmod === true) {
             return now()->toAtomString();
         }
 
-        if (is_string($lastmod) && !empty($lastmod)) {
+        if ($lastmod instanceof CarbonInterface) {
+            return $lastmod->toAtomString();
+        }
+
+        if ($lastmod instanceof \DateTimeInterface) {
+            return $lastmod->format(\DateTimeInterface::ATOM);
+        }
+
+        if (is_string($lastmod) && $lastmod !== '') {
             return $lastmod;
         }
 
         return null;
     }
 }
-

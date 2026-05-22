@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ITHilbert\Sitemap;
 
 use Illuminate\Support\ServiceProvider;
@@ -9,47 +11,27 @@ use ITHilbert\Sitemap\Services\SitemapService;
 
 class SitemapServiceProvider extends ServiceProvider
 {
-    /**
-     * Boot the application events.
-     */
     public function boot(): void
     {
-        // Route-Macro registrieren
         RouteSitemapMacro::register();
 
-        // Config publizieren
-        $this->publishes([
-            __DIR__ . '/Config/sitemap.php' => config_path('sitemap.php'),
-        ], 'sitemap-config');
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__ . '/Config/sitemap.php' => config_path('sitemap.php'),
+            ], 'sitemap-config');
 
-        // Command registrieren
-        $this->registerCommands();
+            $this->commands([
+                SitemapGenerateCommand::class,
+            ]);
+        }
     }
 
-    /**
-     * Register the service provider.
-     */
+    #[\Override]
     public function register(): void
     {
-        // Sicherstellen, dass die Default-Config geladen ist
         $this->mergeConfigFrom(__DIR__ . '/Config/sitemap.php', 'sitemap');
 
-        // Service als Singleton binden
         $this->app->singleton(SitemapService::class);
-
-        // Facade Alias registrieren
         $this->app->alias(SitemapService::class, 'Sitemap');
-        
-        // Autoloader für Facade beibringen (falls gewünscht, hier reicht das Alias)
-    }
-
-    /**
-     * Artisan Commands registrieren.
-     */
-    protected function registerCommands(): void
-    {
-        $this->commands([
-            SitemapGenerateCommand::class,
-        ]);
     }
 }

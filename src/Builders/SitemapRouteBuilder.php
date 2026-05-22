@@ -1,8 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ITHilbert\Sitemap\Builders;
 
+use Carbon\CarbonInterface;
 use Illuminate\Routing\Route;
+use ITHilbert\Sitemap\Enums\Changefreq;
 
 /**
  * Fluenter Builder für Sitemap-Metadaten auf einer Route.
@@ -13,72 +17,69 @@ use Illuminate\Routing\Route;
  *   ->sitemap()->priority('0.5')->changefreq('yearly') // Fluente Syntax
  *   ->sitemap()->priority('0.5')->changefreq('yearly')() // mit __invoke() zur Route zurückkehren
  */
-class SitemapRouteBuilder
+final class SitemapRouteBuilder
 {
-    public function __construct(private Route $route)
+    public function __construct(private readonly Route $route)
     {
     }
 
     /**
      * Priorität setzen (0.0 – 1.0).
      */
-    public function priority(string $value): static
+    public function priority(string|float $value): static
     {
-        $this->route->getAction()['sitemap_meta']['priority'] ?? null;
-        $action = $this->route->getAction();
-        $action['sitemap_meta']['priority'] = $value;
-        $this->route->setAction($action);
+        $value = (string) $value;
 
-        return $this;
+        if (! is_numeric($value) || (float) $value < 0.0 || (float) $value > 1.0) {
+            throw new \InvalidArgumentException(
+                "Ungültige priority: '{$value}'. Muss im Bereich 0.0–1.0 liegen."
+            );
+        }
+
+        return $this->setMeta('priority', $value);
     }
 
     /**
      * Änderungsfrequenz setzen.
-     * Erlaubte Werte: always, hourly, daily, weekly, monthly, yearly, never
+     * Erlaubt: always, hourly, daily, weekly, monthly, yearly, never
      */
-    public function changefreq(string $value): static
+    public function changefreq(string|Changefreq $value): static
     {
-        $action = $this->route->getAction();
-        $action['sitemap_meta']['changefreq'] = $value;
-        $this->route->setAction($action);
+        $enum = $value instanceof Changefreq ? $value : Changefreq::fromInput($value);
 
-        return $this;
+        return $this->setMeta('changefreq', $enum->value);
     }
 
     /**
-     * Lastmod-Datum setzen (ISO 8601 String oder true für heutiges Datum).
-     *
-     * @param string|true $value
+     * Lastmod setzen. Akzeptiert ISO-String, true (=heute), Carbon oder DateTimeInterface.
      */
-    public function lastmod(string|bool $value): static
+    public function lastmod(string|bool|CarbonInterface|\DateTimeInterface $value): static
     {
-        $action = $this->route->getAction();
-        $action['sitemap_meta']['lastmod'] = $value;
-        $this->route->setAction($action);
-
-        return $this;
+        return $this->setMeta('lastmod', $value);
     }
 
     /**
      * Ziel-Sitemap-Dateiname setzen.
-     * Beispiel: ->sitemap()->file('laravel-sitemap.xml')
      */
     public function file(string $filename): static
     {
-        $action = $this->route->getAction();
-        $action['sitemap_meta']['file'] = $filename;
-        $this->route->setAction($action);
-
-        return $this;
+        return $this->setMeta('file', $filename);
     }
 
     /**
      * Gibt die Route zurück.
-     * Ermöglicht den abschließenden ()  nach der fluenten Kette:
-     *   ->sitemap()->priority('0.5')->changefreq('yearly')()
      */
     public function __invoke(): Route
     {
         return $this->route;
+    }
+
+    private function setMeta(string $key, mixed $value): static
+    {
+        $action = $this->route->getAction();
+        $action['sitemap_meta'][$key] = $value;
+        $this->route->setAction($action);
+
+        return $this;
     }
 }
