@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Route;
 use ITHilbert\Sitemap\Data\SitemapEntry;
 use ITHilbert\Sitemap\Enums\Changefreq;
 use ITHilbert\Sitemap\Services\SitemapService;
-use Tests\TestCase;
+use ITHilbert\Sitemap\Tests\TestCase;
 
 final class SitemapServiceTest extends TestCase
 {

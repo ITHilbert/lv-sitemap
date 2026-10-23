@@ -7,7 +7,7 @@ namespace ITHilbert\Sitemap\Tests\Feature;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Route;
 use ITHilbert\Sitemap\Services\SitemapService;
-use Tests\TestCase;
+use ITHilbert\Sitemap\Tests\TestCase;
 
 final class SitemapGenerateCommandTest extends TestCase
 {

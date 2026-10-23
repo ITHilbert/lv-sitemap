@@ -7,7 +7,7 @@ namespace ITHilbert\Sitemap\Tests\Feature;
 use Illuminate\Support\Facades\Route;
 use ITHilbert\Sitemap\Builders\SitemapRouteBuilder;
 use ITHilbert\Sitemap\Enums\Changefreq;
-use Tests\TestCase;
+use ITHilbert\Sitemap\Tests\TestCase;
 
 final class SitemapBuilderTest extends TestCase
 {
